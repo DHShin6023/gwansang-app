@@ -303,8 +303,6 @@ ${hourText}
     headers: {
       'Authorization': `Bearer ${getApiKey()}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://dhshin6023.github.io/gwansang-app/',
-      'X-Title': 'gwansang-app',
     },
     body: JSON.stringify({
       model: MODEL,
