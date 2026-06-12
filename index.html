@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="천명관상">
+  <meta name="theme-color" content="#0a0a1e">
+  <title>천명관상</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- 별 배경 -->
+  <canvas id="starCanvas"></canvas>
+
+  <!-- ╔══════════════════════════════╗ -->
+  <!-- ║  뷰 1: 홈                    ║ -->
+  <!-- ╚══════════════════════════════╝ -->
+  <div class="view active" id="view-home">
+    <div class="home-wrap">
+      <div class="trigram">☯</div>
+      <h1 class="app-title">천명관상</h1>
+      <p class="app-hanja">天 命 觀 相</p>
+      <p class="app-desc">사주팔자와 관상으로 읽는<br>나만의 타고난 운명</p>
+      <button class="btn-gold" onclick="App.goInfo()">✦ 천명을 알아보기 ✦</button>
+    </div>
+    <button class="btn-gear" onclick="App.goSettings()" title="설정">⚙</button>
+  </div>
+
+  <!-- ╔══════════════════════════════╗ -->
+  <!-- ║  뷰 2: 정보 입력              ║ -->
+  <!-- ╚══════════════════════════════╝ -->
+  <div class="view" id="view-info">
+    <div class="top-bar">
+      <button class="btn-back" onclick="App.goHome()">‹</button>
+      <span class="top-title">생년월일 입력</span>
+    </div>
+    <div class="scroll-wrap">
+
+      <p class="section-label">성별</p>
+      <div class="gender-row">
+        <button class="gender-btn active" id="btnMale"   onclick="App.setGender('male')">♂ 남성</button>
+        <button class="gender-btn"        id="btnFemale" onclick="App.setGender('female')">♀ 여성</button>
+      </div>
+
+      <p class="section-label">태어난 해</p>
+      <input class="input-field" type="number" id="inputYear"
+             placeholder="예: 1990" min="1900" max="2025" inputmode="numeric">
+
+      <div class="two-col">
+        <div>
+          <p class="section-label">월</p>
+          <select class="input-field" id="inputMonth">
+            <option value="">월</option>
+          </select>
+        </div>
+        <div>
+          <p class="section-label">일</p>
+          <select class="input-field" id="inputDay">
+            <option value="">일</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="section-label">태어난 시 <span class="label-note">모르면 생략 가능</span></p>
+      <select class="input-field" id="inputHour">
+        <option value="-1">모름 / 생략</option>
+      </select>
+
+      <button class="btn-gold" style="margin-top:32px" onclick="App.goPhoto()">얼굴 사진 찍기 →</button>
+    </div>
+  </div>
+
+  <!-- ╔══════════════════════════════╗ -->
+  <!-- ║  뷰 3: 사진 촬영              ║ -->
+  <!-- ╚══════════════════════════════╝ -->
+  <div class="view" id="view-photo">
+    <div class="top-bar">
+      <button class="btn-back" onclick="App.goInfo()">‹</button>
+      <span class="top-title">얼굴 사진</span>
+    </div>
+    <div class="photo-wrap">
+      <div class="face-guide" id="faceGuide">
+        <div class="face-oval"></div>
+        <p class="guide-hint">얼굴을 타원 안에 맞춰주세요</p>
+      </div>
+      <div class="preview-area" id="previewArea">
+        <img id="previewImg" alt="미리보기">
+      </div>
+      <div class="photo-btns">
+        <label class="btn-outline" for="cameraInput">📷 카메라 촬영</label>
+        <input type="file" id="cameraInput" accept="image/*" capture="user"
+               style="display:none" onchange="App.onPhoto(this)">
+        <label class="btn-outline" for="galleryInput">🖼 갤러리 선택</label>
+        <input type="file" id="galleryInput" accept="image/*"
+               style="display:none" onchange="App.onPhoto(this)">
+      </div>
+      <button class="btn-gold" id="btnAnalyze" style="display:none" onclick="App.startAnalysis()">
+        ✦ 천명 분석 시작 ✦
+      </button>
+    </div>
+  </div>
+
+  <!-- ╔══════════════════════════════╗ -->
+  <!-- ║  뷰 4: 분석 중               ║ -->
+  <!-- ╚══════════════════════════════╝ -->
+  <div class="view" id="view-loading">
+    <div class="loading-wrap">
+      <div class="loader-ring">
+        <div class="loader-inner">☯</div>
+      </div>
+      <p class="loading-main">천명을 읽는 중...</p>
+      <p class="loading-sub" id="loadingSub">사주팔자를 계산하고 있습니다</p>
+    </div>
+  </div>
+
+  <!-- ╔══════════════════════════════╗ -->
+  <!-- ║  뷰 5: 결과                  ║ -->
+  <!-- ╚══════════════════════════════╝ -->
+  <div class="view" id="view-result">
+    <div class="result-scroll">
+
+      <!-- 등급 배너 -->
+      <div class="tier-banner" id="tierBanner">
+        <div class="tier-glow" id="tierGlow"></div>
+        <div class="tier-icon"    id="tierIcon">👑</div>
+        <div class="tier-name"    id="tierName">황제</div>
+        <div class="tier-stars"   id="tierStars"></div>
+        <div class="tier-tagline" id="tierTagline">천명이 깃든 얼굴</div>
+      </div>
+
+      <!-- 사주 카드 -->
+      <div class="result-card">
+        <div class="card-title">☰ 사주팔자</div>
+        <div class="pillars-row" id="pillarsRow"></div>
+        <div class="ohaeng-bar"  id="ohaengBar"></div>
+        <p class="card-body" id="sajuText"></p>
+      </div>
+
+      <!-- 관상 카드 -->
+      <div class="result-card">
+        <div class="card-title">◎ 관상 분석</div>
+        <div id="gwansangList"></div>
+      </div>
+
+      <!-- 종합 풀이 카드 -->
+      <div class="result-card combined-card">
+        <div class="card-title">✦ 종합 천명 풀이</div>
+        <p class="card-body combined-body" id="combinedText"></p>
+      </div>
+
+      <!-- 액션 -->
+      <div class="action-row">
+        <button class="btn-share" onclick="App.share()">📤 공유하기</button>
+        <button class="btn-retry" onclick="App.retry()">🔄 다시 하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ╔══════════════════════════════╗ -->
+  <!-- ║  뷰 6: 설정                  ║ -->
+  <!-- ╚══════════════════════════════╝ -->
+  <div class="view" id="view-settings">
+    <div class="top-bar">
+      <button class="btn-back" onclick="App.goHome()">‹</button>
+      <span class="top-title">설정</span>
+    </div>
+    <div class="scroll-wrap">
+      <p class="section-label">OpenRouter API 키</p>
+      <input class="input-field" type="password" id="apiKeyInput" placeholder="sk-or-v1-...">
+      <p class="input-hint">openrouter.ai에서 발급한 API 키를 입력하세요</p>
+      <button class="btn-gold" onclick="App.saveSettings()">저장</button>
+    </div>
+  </div>
+
+  <script src="saju.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

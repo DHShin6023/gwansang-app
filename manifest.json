@@ -1,0 +1,14 @@
+{
+  "name": "천명관상",
+  "short_name": "천명관상",
+  "description": "사주팔자와 관상으로 읽는 나만의 운명",
+  "start_url": "/gwansang-app/",
+  "display": "standalone",
+  "background_color": "#0a0a1e",
+  "theme_color": "#0a0a1e",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
