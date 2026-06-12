@@ -27,7 +27,7 @@ const GWANSANG_META = {
   overall:    { icon:'✨', label:'전체 인상' },
 };
 
-const MODEL = 'anthropic/claude-opus-4-8';
+const MODEL = 'anthropic/claude-opus-4.8';
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // ── 상태 ─────────────────────────────────────────────
