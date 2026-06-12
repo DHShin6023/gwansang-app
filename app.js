@@ -193,7 +193,7 @@ const App = {
     } catch (e) {
       console.error(e);
       showView('view-photo');
-      alert('분석 중 오류가 발생했습니다.\n' + e.message);
+      alert('분석 중 오류가 발생했습니다.\n' + (e.message || String(e)) + '\n\n[' + e.name + ']');
     }
   },
 
