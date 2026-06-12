@@ -138,7 +138,7 @@ const App = {
     const m = parseInt(document.getElementById('inputMonth').value);
     const d = parseInt(document.getElementById('inputDay').value);
 
-    if (!y || y < 1900 || y > 2025) return alert('올바른 태어난 해를 입력해주세요.');
+    if (!y || y < 1900 || y > new Date().getFullYear()) return alert('올바른 태어난 해를 입력해주세요.');
     if (!m) return alert('월을 선택해주세요.');
     if (!d) return alert('일을 선택해주세요.');
 
@@ -181,10 +181,10 @@ const App = {
     try {
       state.saJu = calculateSaju(state.year, state.month, state.day, state.sijinIdx);
 
-      setLoadingText('AI가 관상과 천명을 분석하고 있습니다');
+      setLoadingText('얼굴 사진을 준비하고 있습니다');
       state.photoBase64 = await resizeImage(state.photoFile);
 
-      setLoadingText('거의 다 됐습니다...');
+      setLoadingText('AI가 관상과 천명을 분석하고 있습니다 (20~40초 소요)');
       const result = await callAI(state.saJu, state.photoBase64, state.gender);
       state.result = result;
 
@@ -311,8 +311,8 @@ ${hourText}
           { type: 'text', text: prompt },
         ],
       }],
-      max_tokens: 2000,
-      temperature: 0.8,
+      max_tokens: 3000,
+      temperature: 0.5,
     }),
   });
 
