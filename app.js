@@ -178,22 +178,26 @@ const App = {
     showView('view-loading');
     setLoadingText('사주팔자를 계산하고 있습니다');
 
+    let _step = '사주계산';
     try {
       state.saJu = calculateSaju(state.year, state.month, state.day, state.sijinIdx);
 
+      _step = '이미지처리';
       setLoadingText('얼굴 사진을 준비하고 있습니다');
       state.photoBase64 = await resizeImage(state.photoFile);
 
+      _step = 'API호출';
       setLoadingText('AI가 관상과 천명을 분석하고 있습니다 (20~40초 소요)');
       const result = await callAI(state.saJu, state.photoBase64, state.gender);
-      state.result = result;
 
+      _step = '결과표시';
+      state.result = result;
       renderResult(result, state.saJu, state.gender);
       showView('view-result');
     } catch (e) {
       console.error(e);
       showView('view-photo');
-      alert('분석 중 오류가 발생했습니다.\n' + (e.message || String(e)) + '\n\n[' + e.name + ']');
+      alert('[단계:' + _step + ']\n' + (e.message || String(e)) + '\n[' + e.name + ']');
     }
   },
 
@@ -313,6 +317,7 @@ ${hourText}
       }],
       max_tokens: 3000,
       temperature: 0.5,
+      stream: false,
     }),
   });
 
