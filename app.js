@@ -322,7 +322,11 @@ ${hourText}
   }
 
   const data = await res.json();
-  const raw  = data.choices?.[0]?.message?.content || '';
+  let raw = data.choices?.[0]?.message?.content ?? '';
+  if (Array.isArray(raw)) {
+    raw = raw.find(b => b?.type === 'text')?.text ?? '';
+  }
+  if (!raw) throw new Error('AI 응답이 비어있습니다. 잠시 후 다시 시도해주세요.');
   return parseJSON(raw);
 }
 
