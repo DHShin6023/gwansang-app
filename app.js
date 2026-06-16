@@ -213,7 +213,32 @@ const App = {
     const r = state.result;
     if (!r) return;
     const tier = TIER_DATA[state.gender][r.tier - 1];
-    const text = `[천명관상] 나의 운명 등급은 "${tier.name}" ${tier.icon}\n${tier.tag}\n\n${r.combined_reading?.slice(0, 80)}...`;
+    const sj = state.saJu;
+
+    const pillarLine = [
+      `년주 ${sj.year.char}(${sj.year.kr})`,
+      `월주 ${sj.month.char}(${sj.month.kr})`,
+      `일주 ${sj.day.char}(${sj.day.kr})`,
+      sj.hour ? `시주 ${sj.hour.char}(${sj.hour.kr})` : null,
+    ].filter(Boolean).join(' / ');
+
+    const gwansangBlock = Object.entries(GWANSANG_META)
+      .filter(([key]) => r.gwansang?.[key])
+      .map(([key, meta]) => `${meta.icon} ${meta.label}\n${r.gwansang[key]}`)
+      .join('\n\n');
+
+    const text = `[천명관상] 나의 운명 등급은 "${tier.name}" ${tier.icon}
+${tier.tag}
+
+📜 사주팔자 (${pillarLine})
+${r.saju_analysis || ''}
+
+◎ 관상 분석
+${gwansangBlock}
+
+✦ 종합 천명 풀이
+${r.combined_reading || ''}`;
+
     if (navigator.share) {
       navigator.share({ title: '천명관상 결과', text }).catch(() => {});
     } else {
