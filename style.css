@@ -373,51 +373,6 @@ html, body {
   padding-bottom: max(24px, env(safe-area-inset-bottom));
 }
 
-/* 등급 배너 */
-.tier-banner {
-  position: relative;
-  text-align: center;
-  padding: 48px 24px 36px;
-  overflow: hidden;
-}
-.tier-glow {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at center top, rgba(201,168,76,.18) 0%, transparent 70%);
-  pointer-events: none;
-}
-.tier-icon {
-  font-size: 64px;
-  line-height: 1;
-  filter: drop-shadow(0 0 16px gold);
-  animation: iconFloat 3s ease-in-out infinite;
-}
-@keyframes iconFloat {
-  0%,100% { transform: translateY(0); }
-  50%     { transform: translateY(-8px); }
-}
-.tier-name {
-  font-size: 44px;
-  font-weight: 700;
-  color: var(--gold);
-  letter-spacing: 6px;
-  margin-top: 12px;
-  text-shadow: 0 0 24px rgba(201,168,76,.7);
-}
-.tier-stars {
-  font-size: 22px;
-  color: var(--gold);
-  letter-spacing: 4px;
-  margin-top: 8px;
-  filter: drop-shadow(0 0 4px gold);
-}
-.tier-tagline {
-  font-size: 15px;
-  color: var(--dim);
-  margin-top: 10px;
-  letter-spacing: 2px;
-}
-
 /* 결과 카드 */
 .result-card {
   margin: 0 16px 16px;
@@ -425,10 +380,6 @@ html, body {
   border: 1px solid var(--border);
   border-radius: 20px;
   padding: 20px;
-}
-.combined-card {
-  border-color: rgba(201,168,76,.5);
-  background: rgba(201,168,76,.07);
 }
 
 .card-title {
@@ -442,11 +393,6 @@ html, body {
   font-size: 15px;
   line-height: 1.9;
   color: var(--gold2);
-}
-.combined-body {
-  font-size: 15px;
-  line-height: 2;
-  color: var(--gold3);
 }
 
 /* 사주 기둥 */
@@ -495,19 +441,6 @@ html, body {
   transition: flex .5s;
 }
 
-/* 관상 항목 */
-.gwansang-item {
-  display: flex;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(201,168,76,.1);
-}
-.gwansang-item:last-child { border-bottom: none; }
-.gwansang-icon { font-size: 20px; flex-shrink: 0; padding-top: 2px; }
-.gwansang-content {}
-.gwansang-part { font-size: 12px; color: var(--gold); letter-spacing: 1px; margin-bottom: 4px; }
-.gwansang-text { font-size: 14px; color: var(--gold2); line-height: 1.7; }
-
 /* 액션 버튼 */
 .action-row {
   display: flex;
@@ -536,27 +469,113 @@ html, body {
   color: var(--gold2);
 }
 
-/* ── 결과 등장 애니메이션 ───────────────────────────── */
-@keyframes revealTier {
-  from { opacity: 0; transform: scale(.6); filter: blur(8px); }
-  to   { opacity: 1; transform: scale(1);  filter: blur(0); }
-}
-.tier-banner.revealed .tier-icon,
-.tier-banner.revealed .tier-name,
-.tier-banner.revealed .tier-stars,
-.tier-banner.revealed .tier-tagline {
-  animation-fill-mode: both;
-}
-.tier-banner.revealed .tier-icon    { animation: revealTier .6s .1s ease-out both; }
-.tier-banner.revealed .tier-name    { animation: revealTier .6s .4s ease-out both; }
-.tier-banner.revealed .tier-stars   { animation: revealTier .5s .7s ease-out both; }
-.tier-banner.revealed .tier-tagline { animation: revealTier .5s .9s ease-out both; }
-
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(20px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .result-card { animation: slideUp .5s ease-out both; }
-.result-card:nth-child(2) { animation-delay: .3s; }
-.result-card:nth-child(3) { animation-delay: .5s; }
-.result-card:nth-child(4) { animation-delay: .7s; }
+
+/* ── V2 결과 화면 ───────────────────────────────────── */
+.btn-history { margin-top: 14px; width: 100%; max-width: 320px; }
+.loading-hint { font-size: 12px; color: rgba(232,213,163,.4); min-height: 1em; }
+
+.result-head {
+  text-align: center;
+  padding: 40px 20px 20px;
+  padding-top: max(40px, calc(env(safe-area-inset-top) + 24px));
+  background: radial-gradient(ellipse at center top, rgba(201,168,76,.18) 0%, transparent 70%);
+}
+.result-year { font-size: 13px; color: var(--dim); letter-spacing: 2px; }
+.result-headline {
+  font-size: 24px; font-weight: 700; color: var(--gold); line-height: 1.5;
+  margin: 12px 0 20px; text-shadow: 0 0 20px rgba(201,168,76,.5);
+  animation: slideUp .6s ease-out both;
+}
+.chip-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.chip {
+  padding: 7px 14px; border-radius: 50px; border: 1px solid var(--border);
+  background: var(--card); color: var(--gold2); font-family: inherit; font-size: 13px; cursor: pointer;
+}
+.chip:active { background: rgba(201,168,76,.15); }
+
+.result-card { scroll-margin-top: 16px; }
+.card-body.small { font-size: 14px; line-height: 1.8; color: var(--dim); margin-top: 6px; }
+.card-meta { font-size: 13px; color: var(--gold2); margin-top: 4px; line-height: 1.7; }
+.card-note { font-size: 12px; color: var(--dim); margin-top: 8px; line-height: 1.6; }
+.sub-title { font-size: 12px; color: var(--gold); letter-spacing: 2px; margin: 18px 0 10px; }
+
+.ohaeng-legend { display: flex; flex-wrap: wrap; gap: 10px; margin: -8px 0 10px; }
+.ohaeng-legend .lg { font-size: 11px; color: var(--dim); }
+.ohaeng-legend .lg::before {
+  content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  background: var(--c); margin-right: 4px; vertical-align: 0;
+}
+
+.daeun-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+.daeun-cell {
+  flex: 0 0 56px; text-align: center; padding: 8px 2px; border-radius: 10px;
+  border: 1px solid var(--border); background: rgba(255,255,255,.03);
+}
+.daeun-cell.now { border-color: var(--gold); box-shadow: 0 0 10px rgba(201,168,76,.35); }
+.dc-age { font-size: 10px; color: var(--dim); }
+.dc-ganji { font-size: 16px; color: var(--gold); margin: 3px 0; }
+.dc-label { font-size: 10px; }
+.lv-상승 .dc-label { color: #8fd18f; }
+.lv-평탄 .dc-label { color: var(--dim); }
+.lv-조정 .dc-label { color: #e8a07a; }
+
+.badge {
+  display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 50px;
+  border: 1px solid; white-space: nowrap; letter-spacing: 0;
+}
+.badge-up   { color: #8fd18f; border-color: rgba(143,209,143,.5); }
+.badge-flat { color: var(--dim); border-color: var(--border); }
+.badge-down { color: #e8a07a; border-color: rgba(232,160,122,.5); }
+
+.period { padding: 14px 0; border-bottom: 1px solid rgba(201,168,76,.12); }
+.period:last-child { border-bottom: none; }
+.period.current { background: rgba(201,168,76,.06); margin: 0 -12px; padding: 14px 12px; border-radius: 12px; }
+.period-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.period-range { font-size: 12px; color: var(--gold); letter-spacing: .5px; }
+.period-title { font-size: 16px; color: var(--gold3); font-weight: 600; margin-bottom: 4px; }
+.section-summary {
+  font-size: 15px; line-height: 1.9; color: var(--gold3); margin-top: 14px;
+  padding-top: 14px; border-top: 1px dashed var(--border);
+}
+
+.face-row { padding: 8px 0; border-bottom: 1px solid rgba(201,168,76,.1); }
+.face-row:last-child { border-bottom: none; }
+.face-part { font-size: 12px; color: var(--gold); margin-bottom: 2px; }
+.face-text { font-size: 14px; color: var(--gold2); line-height: 1.7; }
+
+.area-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
+.area { background: rgba(255,255,255,.03); border: 1px solid rgba(201,168,76,.15); border-radius: 12px; padding: 12px; }
+.area-label { font-size: 12px; color: var(--gold); margin-bottom: 4px; }
+.area-text { font-size: 14px; line-height: 1.75; color: var(--gold2); }
+.months { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.6; }
+.m-good { color: #8fd18f; }
+.m-caution { color: #e8a07a; }
+
+.decision-row { padding: 10px 0; border-bottom: 1px solid rgba(201,168,76,.1); }
+.decision-row:last-child { border-bottom: none; }
+.decision-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.decision-label { font-size: 14px; color: var(--gold3); }
+.decision-marks { display: flex; gap: 6px; flex-wrap: wrap; }
+.dm-year { font-size: 11px; color: var(--dim); }
+
+.life-portrait {
+  margin-top: 16px; padding: 16px; border-radius: 14px;
+  border: 1px solid rgba(201,168,76,.5); background: rgba(201,168,76,.07);
+}
+.lp-title { font-size: 13px; color: var(--gold); letter-spacing: 2px; margin-bottom: 8px; }
+.life-portrait .card-body { color: var(--gold3); line-height: 2; }
+
+.disclaimer { font-size: 12px; color: var(--dim); line-height: 1.7; margin: 4px 20px 12px; }
+
+.history-row {
+  display: block; width: 100%; text-align: left; margin-bottom: 10px; padding: 14px 16px;
+  border-radius: var(--r); border: 1px solid var(--border); background: var(--card);
+  font-family: inherit; color: var(--gold2); cursor: pointer;
+}
+.hr-title { font-size: 15px; color: var(--gold); margin-bottom: 4px; }
+.hr-meta { font-size: 12px; color: var(--dim); }

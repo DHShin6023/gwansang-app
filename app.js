@@ -1,131 +1,110 @@
-// ── 상수 ─────────────────────────────────────────────
-const TIER_DATA = {
-  male: [
-    { name:'노예',   icon:'⛓',  stars:1, tag:'고난이 가득한 험한 운명' },
-    { name:'하층민', icon:'🌑',  stars:2, tag:'평생 고생이 많은 운명' },
-    { name:'평민',   icon:'🌿',  stars:3, tag:'평범하지만 안정적인 삶' },
-    { name:'귀족',   icon:'💎',  stars:4, tag:'재능과 운이 겹친 복된 삶' },
-    { name:'왕자',   icon:'🤴',  stars:5, tag:'타고난 귀함과 카리스마' },
-    { name:'황제',   icon:'👑',  stars:6, tag:'천명이 깃든 완벽한 얼굴' },
-  ],
-  female: [
-    { name:'노예',   icon:'⛓',  stars:1, tag:'고난이 가득한 험한 운명' },
-    { name:'하층민', icon:'🌑',  stars:2, tag:'평생 고생이 많은 운명' },
-    { name:'평민',   icon:'🌿',  stars:3, tag:'평범하지만 안정적인 삶' },
-    { name:'귀족',   icon:'💎',  stars:4, tag:'재능과 운이 겹친 복된 삶' },
-    { name:'공주',   icon:'👸',  stars:5, tag:'타고난 우아함과 귀한 품격' },
-    { name:'황후',   icon:'👑',  stars:6, tag:'천명이 깃든 완벽한 얼굴' },
-  ],
-};
+// 천명관상 V2 — 개인형 생애 풀이
+// 시기의 길흉·주제·변동 신호는 saju.js가 계산하고, AI는 ① 관상 특징 추출 ② 풀이 작성만 맡는다.
 
 const OHAENG_COLOR = { 목:'#4caf50', 화:'#f44336', 토:'#ff9800', 금:'#b0bec5', 수:'#2196f3' };
-const GWANSANG_META = {
-  forehead:   { icon:'🔮', label:'이마' },
-  eyes:       { icon:'👁',  label:'눈' },
-  nose:       { icon:'👃', label:'코' },
-  mouth_chin: { icon:'💬', label:'입·턱' },
-  overall:    { icon:'✨', label:'전체 인상' },
-};
-
-const MODEL = 'anthropic/claude-opus-4.8';
+const MODEL_FACE = 'anthropic/claude-haiku-5.5';
+const MODEL_READ = 'anthropic/claude-sonnet-5.5';
 const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const RESULT_VERSION = 'v2.1';
+const HISTORY_KEY = 'gwansang_v2_history';
+const FACE_CACHE_KEY = 'gwansang_v2_faces';
+const HISTORY_MAX = 10;
+
+// 유년운기(단순화): 얼굴 부위 ↔ 나이대
+const FACE_REGIONS = [
+  { key:'forehead', label:'이마',    from:15, to:30 },
+  { key:'eyes',     label:'눈·눈썹', from:31, to:40 },
+  { key:'nose',     label:'코·광대', from:41, to:50 },
+  { key:'mouth',    label:'인중·입', from:51, to:60 },
+  { key:'chin',     label:'턱',      from:61, to:120 },
+];
+const DECISION_META = [
+  { key:'job',      label:'이직·직업' },
+  { key:'move',     label:'이사·이동' },
+  { key:'marriage', label:'결혼·연애' },
+  { key:'money',    label:'재물·투자' },
+];
+const BANNED = /(수명|장수|임종|사망|죽음|요절|단명|세상을\s*떠|생을\s*마감|숨을\s*거|오래\s*살|명이\s*길)/;
 
 // ── 상태 ─────────────────────────────────────────────
 const state = {
-  gender:   'male',
-  year:     null,
-  month:    null,
-  day:      null,
-  sijinIdx: -1,
-  photoFile: null,
-  photoBase64: null,
-  saJu:     null,
-  result:   null,
+  gender: 'male', year: null, month: null, day: null, sijinIdx: -1,
+  photoFile: null, current: null, // current = { key, createdAt, facts, face, reading }
 };
 
 // ── 초기화 ────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // 이전 버전 HTML이 캐시에서 열린 경우(서비스워커 갱신 전) 한 번만 새로고침
+  if (!document.getElementById('resultBody')) {
+    try {
+      if (!sessionStorage.getItem('gw_reloaded')) { sessionStorage.setItem('gw_reloaded', '1'); location.reload(); return; }
+    } catch {}
+  }
   initStars();
   initSelects();
-  loadSettings();
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  refreshHomeHistory();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 });
 
-// ── 별 배경 ───────────────────────────────────────────
 function initStars() {
   const canvas = document.getElementById('starCanvas');
   const ctx = canvas.getContext('2d');
   let stars = [];
-
   function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
     stars = Array.from({ length: 120 }, () => ({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      r: Math.random() * 1.2 + 0.3,
-      a: Math.random(),
-      speed: Math.random() * 0.008 + 0.003,
+      x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+      r: Math.random() * 1.2 + 0.3, a: Math.random(), speed: Math.random() * 0.008 + 0.003,
     }));
   }
-
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const t = Date.now() / 1000;
     stars.forEach(s => {
       const alpha = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * s.speed * 20 + s.a * 20));
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(232,213,163,${alpha})`;
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(232,213,163,${alpha})`; ctx.fill();
     });
     requestAnimationFrame(draw);
   }
-
-  resize();
-  draw();
+  resize(); draw();
   window.addEventListener('resize', resize);
 }
 
-// ── 셀렉트 초기화 ─────────────────────────────────────
 function initSelects() {
   const monthSel = document.getElementById('inputMonth');
-  for (let i = 1; i <= 12; i++) {
-    monthSel.add(new Option(`${i}월`, i));
-  }
-
+  for (let i = 1; i <= 12; i++) monthSel.add(new Option(`${i}월`, i));
   const daySel = document.getElementById('inputDay');
-  for (let i = 1; i <= 31; i++) {
-    daySel.add(new Option(`${i}일`, i));
-  }
-
+  for (let i = 1; i <= 31; i++) daySel.add(new Option(`${i}일`, i));
   const hourSel = document.getElementById('inputHour');
-  SIJIN.forEach((s, idx) => {
-    hourSel.add(new Option(`${s.label}  ${s.desc}`, idx));
-  });
+  SIJIN.forEach((s, idx) => hourSel.add(new Option(`${s.label}  ${s.desc}`, idx)));
 }
 
-// ── 뷰 전환 ──────────────────────────────────────────
 function showView(id) {
-  document.querySelectorAll('.view').forEach(v => {
-    v.classList.remove('active');
-    v.style.display = 'none';
-  });
+  document.querySelectorAll('.view').forEach(v => { v.classList.remove('active'); v.style.display = 'none'; });
   const next = document.getElementById(id);
   next.style.display = 'flex';
   requestAnimationFrame(() => next.classList.add('active'));
 }
 
+// ── DOM 헬퍼 (AI 텍스트는 항상 textContent로) ─────────
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+function badge(label) {
+  const cls = label === '상승' || label === '유리' ? 'up' : label === '조정' || label === '신중' ? 'down' : 'flat';
+  return el('span', `badge badge-${cls}`, label);
+}
+
 // ── App 공개 API ──────────────────────────────────────
 const App = {
-  goHome()     { showView('view-home'); },
-  goInfo()     { showView('view-info'); },
-  goSettings() {
-    document.getElementById('apiKeyInput').value = getApiKey();
-    showView('view-settings');
-  },
+  goHome() { refreshHomeHistory(); showView('view-home'); },
+  goInfo() { showView('view-info'); },
+  goSettings() { document.getElementById('apiKeyInput').value = getApiKey(); showView('view-settings'); },
+  goHistory() { renderHistory(); showView('view-history'); },
 
   setGender(g) {
     state.gender = g;
@@ -137,16 +116,14 @@ const App = {
     const y = parseInt(document.getElementById('inputYear').value);
     const m = parseInt(document.getElementById('inputMonth').value);
     const d = parseInt(document.getElementById('inputDay').value);
-
     if (!y || y < 1900 || y > new Date().getFullYear()) return alert('올바른 태어난 해를 입력해주세요.');
     if (!m) return alert('월을 선택해주세요.');
     if (!d) return alert('일을 선택해주세요.');
-
-    state.year     = y;
-    state.month    = m;
-    state.day      = d;
-    state.sijinIdx = parseInt(document.getElementById('inputHour').value);
-
+    const dim = new Date(y, m, 0).getDate();
+    if (d > dim) return alert(`${m}월은 ${dim}일까지입니다.`);
+    if (new Date(y, m - 1, d) > new Date()) return alert('미래 날짜는 입력할 수 없습니다.');
+    Object.assign(state, { year: y, month: m, day: d,
+      sijinIdx: parseInt(document.getElementById('inputHour').value) });
     showView('view-photo');
   },
 
@@ -154,11 +131,9 @@ const App = {
     const file = input.files[0];
     if (!file) return;
     state.photoFile = file;
-
     const reader = new FileReader();
     reader.onload = e => {
-      const img = document.getElementById('previewImg');
-      img.src = e.target.result;
+      document.getElementById('previewImg').src = e.target.result;
       document.getElementById('faceGuide').style.display = 'none';
       document.getElementById('previewArea').style.display = 'block';
       document.getElementById('btnAnalyze').style.display = 'block';
@@ -167,38 +142,10 @@ const App = {
     input.value = '';
   },
 
-  async startAnalysis() {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      alert('API 키가 없습니다.\n설정에서 OpenRouter API 키를 입력해주세요.');
-      App.goSettings();
-      return;
-    }
-
-    showView('view-loading');
-    setLoadingText('사주팔자를 계산하고 있습니다');
-
-    let _step = '사주계산';
-    try {
-      state.saJu = calculateSaju(state.year, state.month, state.day, state.sijinIdx);
-
-      _step = '이미지처리';
-      setLoadingText('얼굴 사진을 준비하고 있습니다');
-      state.photoBase64 = await resizeImage(state.photoFile);
-
-      _step = 'API호출';
-      setLoadingText('AI가 관상과 천명을 분석하고 있습니다 (20~40초 소요)');
-      const result = await callAI(state.saJu, state.photoBase64, state.gender);
-
-      _step = '결과표시';
-      state.result = result;
-      renderResult(result, state.saJu, state.gender);
-      showView('view-result');
-    } catch (e) {
-      console.error(e);
-      showView('view-photo');
-      alert('[단계:' + _step + ']\n' + (e.message || String(e)) + '\n[' + e.name + ']');
-    }
+  startAnalysis() { runAnalysis(false); },
+  regenerate() {
+    if (!state.photoFile) return alert('새로 풀이하려면 처음부터 사진을 다시 선택해주세요.');
+    if (confirm('같은 정보로 풀이를 새로 작성합니다. API 요금이 다시 발생합니다. 진행할까요?')) runAnalysis(true);
   },
 
   saveSettings() {
@@ -210,68 +157,554 @@ const App = {
   },
 
   share() {
-    const r = state.result;
-    if (!r) return;
-    const tier = TIER_DATA[state.gender][r.tier - 1];
-    const sj = state.saJu;
-
-    const pillarLine = [
-      `년주 ${sj.year.char}(${sj.year.kr})`,
-      `월주 ${sj.month.char}(${sj.month.kr})`,
-      `일주 ${sj.day.char}(${sj.day.kr})`,
-      sj.hour ? `시주 ${sj.hour.char}(${sj.hour.kr})` : null,
-    ].filter(Boolean).join(' / ');
-
-    const gwansangBlock = Object.entries(GWANSANG_META)
-      .filter(([key]) => r.gwansang?.[key])
-      .map(([key, meta]) => `${meta.icon} ${meta.label}\n${r.gwansang[key]}`)
-      .join('\n\n');
-
-    const text = `[천명관상] 나의 운명 등급은 "${tier.name}" ${tier.icon}
-${tier.tag}
-
-📜 사주팔자 (${pillarLine})
-${r.saju_analysis || ''}
-
-◎ 관상 분석
-${gwansangBlock}
-
-✦ 종합 천명 풀이
-${r.combined_reading || ''}`;
-
-    if (navigator.share) {
-      navigator.share({ title: '천명관상 결과', text }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(text).then(() => alert('클립보드에 복사되었습니다.'));
-    }
+    const c = state.current; if (!c) return;
+    const text = buildShareText(c, false);
+    if (navigator.share) navigator.share({ title: '천명관상', text }).catch(() => {});
+    else copyText(text);
   },
+  copyAll() { const c = state.current; if (c) copyText(buildShareText(c, true)); },
 
   retry() {
-    state.photoFile    = null;
-    state.photoBase64  = null;
-    state.result       = null;
-    document.getElementById('faceGuide').style.display  = 'flex';
+    state.photoFile = null; state.current = null;
+    document.getElementById('faceGuide').style.display = 'flex';
     document.getElementById('previewArea').style.display = 'none';
-    document.getElementById('btnAnalyze').style.display  = 'none';
-    showView('view-home');
+    document.getElementById('btnAnalyze').style.display = 'none';
+    App.goHome();
+  },
+
+  openHistory(key) {
+    const item = loadHistory().find(h => h.key === key);
+    if (!item) return;
+    state.current = item;
+    state.photoFile = null; // 다른 사람의 사진으로 '새로 풀이'가 돌지 않도록
+    renderResult(item);
+    showView('view-result');
+  },
+  clearHistory() {
+    if (!confirm('저장된 풀이 기록을 모두 삭제할까요? (이 기기에서만 삭제됩니다)')) return;
+    localStorage.removeItem(HISTORY_KEY);
+    localStorage.removeItem(FACE_CACHE_KEY);
+    renderHistory(); refreshHomeHistory();
+  },
+
+  scrollTo(id) {
+    const target = document.getElementById(id);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   },
 };
 
-// ── 이미지 리사이즈 ───────────────────────────────────
+// ── 분석 실행 ─────────────────────────────────────────
+async function runAnalysis(force) {
+  if (!getApiKey()) {
+    alert('API 키가 없습니다.\n설정에서 OpenRouter API 키를 입력해주세요.');
+    return App.goSettings();
+  }
+  showView('view-loading');
+  let step = '사주계산';
+  const stopTicker = startTicker();
+  try {
+    setLoadingText('사주팔자와 대운을 계산하고 있습니다');
+    const input = { year: state.year, month: state.month, day: state.day,
+                    sijinIdx: state.sijinIdx, gender: state.gender };
+    const facts = Saju.analyze(input, new Date());
+
+    step = '이미지처리';
+    setLoadingText('얼굴 사진을 준비하고 있습니다');
+    const base64 = await resizeImage(state.photoFile);
+    const photoHash = await sha256(await state.photoFile.arrayBuffer());
+    const key = await sha256([RESULT_VERSION, input.gender, input.year, input.month, input.day,
+                              input.sijinIdx, facts.present.year, photoHash].join('|'));
+
+    const cached = loadHistory().find(h => h.key === key);
+    if (cached && !force) {
+      try {
+        renderResult(cached);
+        state.current = cached;
+        return showView('view-result');
+      } catch (e) {
+        console.warn('저장된 풀이를 표시하지 못해 새로 풀이합니다', e);
+        removeHistory(key);
+      }
+    }
+
+    step = '관상분석';
+    setLoadingText('관상을 살피고 있습니다');
+    const faceCache = loadJSON(FACE_CACHE_KEY, {});
+    let face = force ? null : faceCache[photoHash];
+    if (!face) {
+      face = await callFace(base64);
+      faceCache[photoHash] = face;
+      const keys = Object.keys(faceCache);
+      if (keys.length > HISTORY_MAX) delete faceCache[keys[0]];
+      saveJSON(FACE_CACHE_KEY, faceCache);
+    }
+    attachFace(facts, face);
+
+    step = '풀이작성';
+    setLoadingText('지나온 길과 다가올 날을 풀어 쓰고 있습니다 (40~90초 소요)');
+    const reading = normalizeReading(await callReading(facts, face));
+
+    step = '결과표시';
+    const item = { key, createdAt: Date.now(), input, facts, face, reading,
+                   label: `${input.year}.${input.month}.${input.day} · ${input.gender === 'male' ? '남' : '여'}` };
+    renderResult(item);          // 화면 표시가 성공한 결과만 저장
+    saveHistory(item);
+    state.current = item;
+    showView('view-result');
+  } catch (e) {
+    console.error(e);
+    showView('view-photo');
+    alert('[단계:' + step + ']\n' + (e.message || String(e)));
+  } finally {
+    stopTicker();
+  }
+}
+
+function startTicker() {
+  const lines = ['오행의 균형을 살피는 중', '대운의 흐름을 따라가는 중', '올해의 기운을 읽는 중',
+                 '다가올 3년을 내다보는 중', '생애의 그림을 그리는 중'];
+  let i = 0;
+  const id = setInterval(() => {
+    const sub = document.getElementById('loadingHint');
+    if (sub) sub.textContent = lines[i++ % lines.length];
+  }, 6000);
+  return () => { clearInterval(id); const sub = document.getElementById('loadingHint'); if (sub) sub.textContent = ''; };
+}
+
+// 관상 부위를 시기(나이 구간)에 붙인다
+function attachFace(facts, face) {
+  const regionsFor = (from, to) => FACE_REGIONS
+    .filter(r => r.to >= from && r.from <= to && face.regions?.[r.key])
+    .map(r => ({ part: r.label, ages: `${r.from}~${r.to > 100 ? '' : r.to}세`,
+                 feature: face.regions[r.key].feature, strength: face.regions[r.key].strength }));
+  facts.past.forEach(p => { p.face = regionsFor(p.startAge, p.endAge); });
+  facts.far.forEach(p => { p.face = regionsFor(p.startAge, p.endAge); });
+  facts.present.face = regionsFor(facts.present.age, facts.present.age);
+}
+
+// ── AI 호출 ───────────────────────────────────────────
+async function callAPI(model, messages, maxTokens, temperature) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 180000);
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${getApiKey()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature, stream: false }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`API 오류 (${res.status}): ${(await res.text()).slice(0, 200)}`);
+    const data = await res.json();
+    let raw = data.choices?.[0]?.message?.content ?? '';
+    if (Array.isArray(raw)) raw = raw.find(b => b?.type === 'text')?.text ?? '';
+    if (!raw) throw new Error('AI 응답이 비어있습니다. 잠시 후 다시 시도해주세요.');
+    if (data.choices?.[0]?.finish_reason === 'length') throw new Error('AI 응답이 길이 제한으로 잘렸습니다. 다시 시도해주세요.');
+    if (data.usage) console.info(model, 'usage', data.usage);
+    return parseJSON(raw);
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('AI 응답 시간이 초과되었습니다. 다시 시도해주세요.');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function callFace(base64) {
+  const prompt = `당신은 관상학 전문가입니다. 사진 속 얼굴의 부위별 특징을 관찰해 기록하세요.
+- 모든 인종의 얼굴을 그 인종 고유의 골격·이목구비 기준으로 동등하게 봅니다.
+- 미추(美醜)나 사람의 우열을 평가하지 않습니다. 관찰된 형태와 관상학적 의미만 씁니다.
+- strength는 그 부위의 관상학적 기운이 얼마나 뚜렷한지입니다: "강" / "중" / "약".
+- 사진이 흐리거나 가려진 부위는 strength를 "중"으로 두고 feature에 "사진상 판별 어려움"이라고 씁니다.
+- 수명·장수·건강·질병에 관한 해석은 쓰지 않습니다(인중·턱도 마찬가지). 성품·기질·운의 흐름으로만 씁니다.
+
+반드시 아래 JSON만 반환하세요 (설명·마크다운 금지):
+{
+  "is_face": true,
+  "quality": "good | fair | poor",
+  "regions": {
+    "forehead": { "feature": "이마 형태와 관상학적 의미 (한 문장)", "strength": "강|중|약" },
+    "eyes":     { "feature": "눈·눈썹 (한 문장)", "strength": "강|중|약" },
+    "nose":     { "feature": "코·광대 (한 문장)", "strength": "강|중|약" },
+    "mouth":    { "feature": "인중·입 (한 문장)", "strength": "강|중|약" },
+    "chin":     { "feature": "턱·하관 (한 문장)", "strength": "강|중|약" }
+  },
+  "overall": "전체 인상과 기질 (한 문장)"
+}
+사람 얼굴이 아니면 {"is_face": false}만 반환하세요.`;
+  const face = await callAPI(MODEL_FACE, [{ role: 'user', content: [
+    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+    { type: 'text', text: prompt },
+  ] }], 800, 0.2);
+  if (face.is_face === false) throw new Error('사진에서 얼굴을 찾지 못했습니다. 얼굴이 잘 보이는 정면 사진으로 다시 시도해주세요.');
+  if (!face.regions || typeof face.regions !== 'object') throw new Error('관상 분석 결과가 올바르지 않습니다. 다시 시도해주세요.');
+  const regions = {};
+  FACE_REGIONS.forEach(({ key }) => {
+    const r = face.regions[key];
+    const feature = typeof r === 'string' ? r : (r && typeof r.feature === 'string' ? r.feature : '');
+    if (!feature) return;
+    const strength = r && ['강','중','약'].includes(r.strength) ? r.strength : '중';
+    regions[key] = { feature, strength };
+  });
+  return scrubBanned({ quality: String(face.quality || ''), overall: typeof face.overall === 'string' ? face.overall : '', regions });
+}
+
+const READING_SYSTEM = `당신은 사주명리와 관상에 밝은 상담가입니다. 한 사람의 과거·현재·미래를 풀어 씁니다.
+시기별 길흉·주제·변동 신호는 이미 계산되어 [계산 결과]로 주어집니다. 당신의 일은 그것을 사람의 말로 풀어 쓰는 것입니다.
+
+[반드시 지킬 규칙]
+1. [계산 결과]에 없는 길흉을 지어내지 마세요. label(상승/평탄/조정)과 score, themes, flags를 근거로 씁니다.
+   score는 "이 사람 인생 안에서의 상대적 위치"입니다(50=평균). 다른 사람과 비교하는 등급이 아닙니다.
+2. label이 "조정"이거나 flags가 있는 시기는 반드시 주의할 점을 쓰고, 어떻게 대처하면 좋은지 함께 씁니다.
+   "상승" 시기에도 방심하면 안 되는 점을 한 가지는 씁니다. 아첨하지 마세요.
+3. 과거(past)는 구체적 사건을 단정하지 마세요. "~한 기운이 강했던 시기", "~했을 가능성이 큽니다"처럼
+   시기의 성격과 겪었을 법한 변화의 방향으로 씁니다. 연도·나이는 계산 결과의 것만 씁니다.
+4. 결정(decisions)은 "하라/마라"가 아니라 "유리한 시기·신중할 시기"로 씁니다.
+   판정값 의미: 유리=그 주제가 들어오고 기운도 좋음 / 움직임 있음=주제는 들어오나 기운은 보통 /
+   신중=주제가 들어오지만 기운이 약하거나 충돌이 있음 / 잔잔함=그해에는 그 주제의 움직임이 적음.
+5. 수명, 사망·임종 시점, 질병명은 절대 쓰지 마세요. 건강은 생활 습관 수준의 조언만 씁니다.
+6. 관상(face)은 보조 근거입니다. 해당 나이대의 부위 특징이 있으면 자연스럽게 한 번씩 연결하세요.
+7. 명리 용어(십신·충·합 등)는 쓰되, 바로 뒤에 쉬운 말로 풀어 주세요.
+8. 존댓말("~입니다", "~하세요")로 씁니다.
+
+반드시 JSON만 반환하세요 (마크다운·설명 금지).`;
+
+function readingPrompt(facts, face) {
+  const slim = JSON.parse(JSON.stringify(facts));
+  const strip = o => { delete o.startAge; delete o.endAge; return o; };
+  slim.past.forEach(strip); slim.far.forEach(strip);
+  slim.daeun = slim.daeun.list.map(d => `${d.ages} ${d.ganji} ${d.label}(${d.score})`).join(' / ');
+  return `[계산 결과]
+${JSON.stringify(slim)}
+
+[관상 전체 인상] ${face.overall || ''} (사진 품질: ${face.quality || '알 수 없음'})
+
+[출력 형식] — 풀이를 먼저, 요약(headline)은 맨 마지막에 씁니다.
+{
+  "past": {
+    "periods": [ { "range": "past 항목의 range 그대로", "title": "그 시기를 한마디로 (10자 내외)", "text": "2~3문장" } ],
+    "summary": "지금까지의 삶을 관통하는 흐름 (2~3문장)"
+  },
+  "present": {
+    "overview": "올해(${facts.present.year}년 ${facts.present.ganji})의 전체 기운 (3~4문장)",
+    "areas": { "work": "일·직업 (1~2문장)", "money": "재물 (1~2문장)", "relationship": "관계·인연 (1~2문장)", "health_habit": "몸과 생활 습관 (1문장)" },
+    "months": "좋은 달과 조심할 달을 어떻게 쓰면 좋은지 (1~2문장)"
+  },
+  "future_near": {
+    "years": [ { "year": 연도숫자, "keyword": "그해 키워드 (6자 내외)", "text": "3문장" } ],
+    "decisions": { "job": "3년 중 언제가 유리하고 언제 신중할지 (2문장)", "move": "…", "marriage": "…", "money": "…" }
+  },
+  "future_far": {
+    "phases": [ { "range": "far 대운들을 2~3개 구간으로 묶은 나이 범위", "text": "3문장" } ],
+    "life_portrait": "이 사람이 생애를 어떤 모습으로 정리할지, 무엇을 이루어 가는 사람인지 (4~6문장)"
+  },
+  "headline": "이 사람의 천명을 한 줄로 (20자 내외)"
+}
+- past.periods는 [계산 결과]의 past 항목 수(${facts.past.length}개)와 같은 순서·같은 개수로 쓰고, range는 past의 range 문자열을 그대로 복사합니다.
+${facts.far.length ? '' : '- [계산 결과]의 far가 비어 있으므로 future_far.phases는 빈 배열 []로 두고, life_portrait만 지나온 흐름을 바탕으로 씁니다.\n'}
+- future_near.years는 ${facts.near.map(n => n.year).join(', ')} 세 해입니다.`;
+}
+
+async function callReading(facts, face) {
+  const messages = [
+    { role: 'system', content: READING_SYSTEM },
+    { role: 'user', content: readingPrompt(facts, face) },
+  ];
+  let reading = await callAPI(MODEL_READ, messages, 8000, 0.4);
+  if (BANNED.test(JSON.stringify(reading))) {
+    messages.push({ role: 'assistant', content: JSON.stringify(reading) },
+                  { role: 'user', content: '규칙 5 위반 표현(수명·사망·임종 등)이 있습니다. 해당 표현을 빼고 같은 JSON 형식으로 다시 쓰세요.' });
+    try { reading = await callAPI(MODEL_READ, messages, 8000, 0.3); }
+    catch (e) { console.warn('재요청 실패 — 첫 응답에서 금지 표현만 제거', e); }
+  }
+  return scrubBanned(reading);
+}
+
+// 재요청 후에도 남은 금지 표현은 해당 문장째 제거
+function scrubBanned(obj) {
+  if (typeof obj === 'string') {
+    if (!BANNED.test(obj)) return obj;
+    return (obj.match(/[^.!?。]+[.!?。]?\s*/g) || []).filter(s => !BANNED.test(s)).join('').trim();
+  }
+  if (Array.isArray(obj)) return obj.map(scrubBanned);
+  if (obj && typeof obj === 'object') {
+    for (const k in obj) obj[k] = scrubBanned(obj[k]);
+  }
+  return obj;
+}
+
+// AI 응답 모양을 렌더러가 기대하는 형태로 맞춘다 (배열·문자열 보장)
+function normalizeReading(r) {
+  const str = v => (typeof v === 'string' ? v : v == null ? '' : String(v));
+  const obj = v => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+  const arr = v => (Array.isArray(v) ? v : v && typeof v === 'object' ? Object.values(v) : []);
+  r = obj(r);
+  const past = obj(r.past), present = obj(r.present), near = obj(r.future_near), far = obj(r.future_far);
+  const areas = obj(present.areas), dec = obj(near.decisions);
+  return {
+    past: { periods: arr(past.periods).map(p => (typeof p === 'string' ? { text: p } : obj(p)))
+                       .map(p => ({ range: str(p.range), title: str(p.title), text: str(p.text) })),
+            summary: str(past.summary) },
+    present: { overview: str(present.overview), months: str(present.months),
+               areas: { work: str(areas.work), money: str(areas.money), relationship: str(areas.relationship), health_habit: str(areas.health_habit) } },
+    future_near: { years: arr(near.years).map(obj).map(y => ({ year: Number(y.year) || 0, keyword: str(y.keyword), text: str(y.text) })),
+                   decisions: { job: str(dec.job), move: str(dec.move), marriage: str(dec.marriage), money: str(dec.money) } },
+    future_far: { phases: arr(far.phases).map(p => (typeof p === 'string' ? { text: p } : obj(p)))
+                            .map(p => ({ range: str(p.range), text: str(p.text) })),
+                  life_portrait: str(far.life_portrait) },
+    headline: str(r.headline),
+  };
+}
+
+function parseJSON(raw) {
+  const s = raw.indexOf('{'), e = raw.lastIndexOf('}');
+  if (s < 0 || e <= s) throw new Error('AI 응답에서 JSON을 찾을 수 없습니다.');
+  try { return JSON.parse(raw.slice(s, e + 1)); }
+  catch { throw new Error('AI 응답 파싱 실패: ' + raw.slice(0, 100)); }
+}
+
+// ── 결과 렌더링 ───────────────────────────────────────
+function renderResult(item) {
+  const { facts, face } = item;
+  const r = normalizeReading(item.reading);
+  const root = document.getElementById('resultBody');
+  root.textContent = '';
+
+  // 헤더
+  const head = el('div', 'result-head');
+  head.append(el('div', 'result-year', `${facts.present.year} ${facts.present.ganji}년 · 만 ${facts.age}세`),
+              el('h2', 'result-headline', r.headline || '당신의 천명'));
+  const chips = el('div', 'chip-row');
+  [['sec-past','지나온 길'],['sec-present','올해'],['sec-near','다가올 3년'],['sec-far','생애의 그림']].forEach(([id, label]) => {
+    const b = el('button', 'chip', label); b.onclick = () => App.scrollTo(id); chips.append(b);
+  });
+  head.append(chips);
+  root.append(head);
+
+  // 사주 원국
+  const chartCard = card('☰ 사주 원국');
+  const pr = el('div', 'pillars-row');
+  [['시주','hour'],['일주','day'],['월주','month'],['년주','year']].forEach(([label, k]) => {
+    const box = el('div', 'pillar-box');
+    box.append(el('div', 'pillar-label', label),
+               el('div', 'pillar-char', facts.chart.pillars[k] || '?'),
+               el('div', 'pillar-kr', facts.chart.pillarsKr[k] || '모름'));
+    pr.append(box);
+  });
+  chartCard.append(pr);
+  const bar = el('div', 'ohaeng-bar');
+  const legend = el('div', 'ohaeng-legend');
+  ['목','화','토','금','수'].forEach(k => {
+    const pct = facts.chart.ohaeng[k] || 0;
+    if (pct > 0) { const seg = el('div', 'ohaeng-seg'); seg.style.flex = pct; seg.style.background = OHAENG_COLOR[k]; bar.append(seg); }
+    const lg = el('span', 'lg', `${k} ${pct}%`); lg.style.setProperty('--c', OHAENG_COLOR[k]); legend.append(lg);
+  });
+  chartCard.append(bar, legend);
+  chartCard.append(el('p', 'card-meta',
+    `일간 ${facts.chart.dayMaster} · ${facts.chart.strength.label} · 힘이 되는 기운 ${facts.chart.favorable.join('·')}`));
+  facts.chart.notes.forEach(n => chartCard.append(el('p', 'card-note', 'ⓘ ' + n)));
+
+  // 대운 띠
+  const strip = el('div', 'daeun-strip');
+  facts.daeun.list.forEach(d => {
+    const cell = el('div', `daeun-cell lv-${d.label}` + (facts.present.daeun && facts.present.daeun.k === d.k ? ' now' : ''));
+    cell.append(el('div', 'dc-age', `${d.startAge}세`), el('div', 'dc-ganji', d.ganji), el('div', 'dc-label', d.label));
+    strip.append(cell);
+  });
+  chartCard.append(el('p', 'sub-title', `대운 (${facts.daeun.forward ? '순행' : '역행'} · ${facts.daeun.startAge}세 시작)`), strip);
+  root.append(chartCard);
+
+  // 관상 요약
+  if (face) {
+    const fc = card('◎ 관상');
+    if (face.overall) fc.append(el('p', 'card-body', face.overall));
+    FACE_REGIONS.forEach(reg => {
+      const f = face.regions?.[reg.key]; if (!f) return;
+      const row = el('div', 'face-row');
+      row.append(el('div', 'face-part', `${reg.label} · ${reg.from}${reg.to > 100 ? '세~' : '~' + reg.to + '세'}`),
+                 el('div', 'face-text', `${f.feature} (${f.strength})`));
+      fc.append(row);
+    });
+    root.append(fc);
+  }
+
+  // 과거
+  const past = section('sec-past', '◐ 지나온 길');
+  const periods = r.past?.periods || [];
+  facts.past.forEach((p, i) => {
+    const rp = periods.find(x => x.range === p.range) || periods[i] || {};
+    const item = el('div', 'period' + (p.current ? ' current' : ''));
+    const top = el('div', 'period-top');
+    top.append(el('span', 'period-range', p.range + (p.current ? ' · 지금' : '')), badge(p.label));
+    item.append(top);
+    if (rp.title) item.append(el('div', 'period-title', rp.title));
+    if (rp.text) item.append(el('p', 'card-body', rp.text));
+    past.append(item);
+  });
+  if (r.past?.summary) past.append(el('p', 'section-summary', r.past.summary));
+  root.append(past);
+
+  // 현재
+  const pres = section('sec-present', `◉ 올해의 운 · ${facts.present.year} ${facts.present.ganji}`);
+  const ptop = el('div', 'period-top');
+  ptop.append(el('span', 'period-range', `만 ${facts.age}세 · ${facts.present.daeun ? facts.present.daeun.ganji + ' 대운' : ''}`), badge(facts.present.label));
+  pres.append(ptop);
+  if (r.present?.overview) pres.append(el('p', 'card-body', r.present.overview));
+  const grid = el('div', 'area-grid');
+  [['work','일·직업'],['money','재물'],['relationship','관계·인연'],['health_habit','몸과 습관']].forEach(([k, label]) => {
+    if (!r.present?.areas?.[k]) return;
+    const a = el('div', 'area');
+    a.append(el('div', 'area-label', label), el('div', 'area-text', r.present.areas[k]));
+    grid.append(a);
+  });
+  pres.append(grid);
+  const months = el('div', 'months');
+  if (facts.present.goodMonths.length) months.append(el('div', 'm-good', '좋은 달 · ' + facts.present.goodMonths.join(', ')));
+  if (facts.present.cautionMonths.length) months.append(el('div', 'm-caution', '조심할 달 · ' + facts.present.cautionMonths.join(', ')));
+  pres.append(months);
+  if (r.present?.months) pres.append(el('p', 'card-body small', r.present.months));
+  root.append(pres);
+
+  // 미래A
+  const near = section('sec-near', '◑ 다가올 3년');
+  const ry = r.future_near?.years || [];
+  facts.near.forEach(n => {
+    const ny = ry.find(y => Number(y.year) === n.year) || {};
+    const item = el('div', 'period');
+    const top = el('div', 'period-top');
+    top.append(el('span', 'period-range', `${n.year} ${n.ganji}년 · 만 ${n.age}세` + (ny.keyword ? ` · ${ny.keyword}` : '')), badge(n.label));
+    item.append(top);
+    if (ny.text) item.append(el('p', 'card-body', ny.text));
+    near.append(item);
+  });
+  const dt = el('div', 'decision-table');
+  DECISION_META.forEach(dm => {
+    const row = el('div', 'decision-row');
+    const head2 = el('div', 'decision-head');
+    head2.append(el('span', 'decision-label', dm.label));
+    const marks = el('span', 'decision-marks');
+    facts.near.forEach(n => {
+      const m = el('span', 'dmark'); m.append(el('span', 'dm-year', String(n.year).slice(2) + '년 '), badge(n.decisions[dm.key])); marks.append(m);
+    });
+    head2.append(marks);
+    row.append(head2);
+    const txt = r.future_near?.decisions?.[dm.key];
+    if (txt) row.append(el('p', 'card-body small', txt));
+    dt.append(row);
+  });
+  near.append(el('p', 'sub-title', '중요한 결정의 시기'), dt);
+  root.append(near);
+
+  // 미래B
+  const far = section('sec-far', '○ 생애의 그림');
+  (r.future_far?.phases || []).forEach(ph => {
+    const item = el('div', 'period');
+    item.append(el('div', 'period-range', ph.range || ''));
+    if (ph.text) item.append(el('p', 'card-body', ph.text));
+    far.append(item);
+  });
+  if (r.future_far?.life_portrait) {
+    const lp = el('div', 'life-portrait');
+    lp.append(el('div', 'lp-title', '✦ 생애를 정리하며'), el('p', 'card-body', r.future_far.life_portrait));
+    far.append(lp);
+  }
+  root.append(far);
+
+  root.append(el('p', 'disclaimer',
+    'ⓘ 이 풀이는 전통 명리·관상 이론을 단순화한 계산에 근거한 참고용 해석입니다. 중요한 결정은 본인의 판단으로 하세요.'));
+
+  document.querySelector('#view-result .result-scroll').scrollTop = 0;
+}
+
+function card(title) { const c = el('div', 'result-card'); c.append(el('div', 'card-title', title)); return c; }
+function section(id, title) { const c = card(title); c.id = id; return c; }
+
+// ── 공유 텍스트 ───────────────────────────────────────
+function buildShareText(item, full) {
+  const { facts } = item;
+  const r = normalizeReading(item.reading);
+  const near = facts.near.map(n => {
+    const y = (r.future_near?.years || []).find(x => Number(x.year) === n.year) || {};
+    return `${n.year} ${n.label}${y.keyword ? '(' + y.keyword + ')' : ''}`;
+  }).join(' · ');
+  if (!full) {
+    return `[천명관상] ${r.headline || ''}
+올해 ${facts.present.year} ${facts.present.ganji}년 · ${facts.present.label}
+${r.present?.overview || ''}
+
+다가올 3년: ${near}
+
+✦ ${r.future_far?.life_portrait || ''}`;
+  }
+  const lines = [`[천명관상] ${r.headline || ''}`,
+    `사주 ${['year','month','day','hour'].map(k => facts.chart.pillars[k]).filter(Boolean).join(' ')} · ${facts.chart.strength.label}`, '',
+    '◐ 지나온 길'];
+  facts.past.forEach((p, i) => { const rp = r.past.periods.find(x => x.range === p.range) || r.past.periods[i] || {}; lines.push(`· ${p.range} [${p.label}] ${rp.title || ''}`, rp.text || ''); });
+  if (r.past?.summary) lines.push(r.past.summary);
+  lines.push('', `◉ 올해 ${facts.present.year} ${facts.present.ganji}년 [${facts.present.label}]`, r.present?.overview || '');
+  const a = r.present?.areas || {};
+  lines.push(`일: ${a.work || ''}`, `재물: ${a.money || ''}`, `관계: ${a.relationship || ''}`, `몸: ${a.health_habit || ''}`);
+  lines.push(`좋은 달: ${facts.present.goodMonths.join(', ')} / 조심할 달: ${facts.present.cautionMonths.join(', ')}`);
+  lines.push('', '◑ 다가올 3년');
+  facts.near.forEach(n => { const y = (r.future_near?.years || []).find(x => Number(x.year) === n.year) || {}; lines.push(`· ${n.year} [${n.label}] ${y.keyword || ''}`, y.text || ''); });
+  DECISION_META.forEach(d => lines.push(`${d.label}: ${r.future_near?.decisions?.[d.key] || ''}`));
+  lines.push('', '○ 생애의 그림');
+  (r.future_far?.phases || []).forEach(ph => lines.push(`· ${ph.range}`, ph.text || ''));
+  lines.push(r.future_far?.life_portrait || '', '', '※ 참고용 해석입니다.');
+  return lines.join('\n');
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => alert('클립보드에 복사되었습니다.'))
+    .catch(() => alert('복사에 실패했습니다.'));
+}
+
+// ── 기록 ─────────────────────────────────────────────
+function loadJSON(k, def) { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } }
+function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } }
+function loadHistory() { const h = loadJSON(HISTORY_KEY, []); return Array.isArray(h) ? h : []; }
+function saveHistory(item) {
+  let h = loadHistory().filter(x => x.key !== item.key);
+  h.unshift(item);
+  h = h.slice(0, HISTORY_MAX);
+  while (h.length && !saveJSON(HISTORY_KEY, h)) h.pop(); // 용량 초과 시 오래된 것부터 정리
+}
+function removeHistory(key) { saveJSON(HISTORY_KEY, loadHistory().filter(x => x.key !== key)); }
+function refreshHomeHistory() {
+  const n = loadHistory().length;
+  const btn = document.getElementById('btnHistory');
+  if (!btn) return;
+  btn.style.display = n ? 'block' : 'none';
+  btn.textContent = `지난 풀이 보기 (${n})`;
+}
+function renderHistory() {
+  const list = document.getElementById('historyList');
+  list.textContent = '';
+  const h = loadHistory();
+  if (!h.length) { list.append(el('p', 'input-hint', '저장된 풀이가 없습니다.')); return; }
+  h.forEach(item => {
+    const row = el('button', 'history-row');
+    const d = new Date(item.createdAt);
+    row.append(el('div', 'hr-title', item.reading?.headline || '천명 풀이'),
+               el('div', 'hr-meta', `${item.label} · ${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()} 풀이`));
+    row.onclick = () => App.openHistory(item.key);
+    list.append(row);
+  });
+}
+
+// ── 이미지·해시 ───────────────────────────────────────
 function resizeImage(file, maxSize = 800, quality = 0.82) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onerror = reject;
+    reader.onerror = () => reject(new Error('사진 파일을 읽지 못했습니다.'));
     reader.onload = e => {
       const img = new Image();
-      img.onerror = reject;
+      img.onerror = () => reject(new Error('이 사진 형식은 열 수 없습니다. 다른 사진(JPG/PNG)으로 시도해주세요.'));
       img.onload = () => {
-        const ratio  = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
         const canvas = document.createElement('canvas');
-        canvas.width  = Math.round(img.width  * ratio);
+        canvas.width = Math.round(img.width * ratio);
         canvas.height = Math.round(img.height * ratio);
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL('image/jpeg', quality).split(',')[1]);
       };
       img.src = e.target.result;
@@ -280,184 +713,15 @@ function resizeImage(file, maxSize = 800, quality = 0.82) {
   });
 }
 
-// ── AI 호출 ───────────────────────────────────────────
-async function callAI(saJu, base64, gender) {
-  const genderLabel = gender === 'male' ? '남성' : '여성';
-  const tierNames = TIER_DATA[gender].map((t,i) => `${i+1}=${t.name}(${t.tag})`).join(', ');
-
-  const hourText = saJu.hour
-    ? `시주(時柱): ${saJu.hour.char}`
-    : '시주(時柱): 불명(생략됨)';
-
-  const oText = Object.entries(saJu.ohaeng)
-    .map(([k, v]) => `${k} ${v}%`).join(' · ');
-
-  const prompt = `당신은 동양 사주명리학과 글로벌 관상학을 모두 통달한 전문가입니다.
-사주팔자(四柱八字)는 동양 철학에 기반하되, 관상 분석은 특정 인종·문화에 편향되지 않고
-모든 인종(아시아인·흑인·백인·히스패닉 등)의 얼굴 특징을 보편적 관상 원리로 해석합니다.
-인종별 고유한 골격·피부·이목구비 특징을 그 자체의 기준으로 평가하며, 어떤 인종도 동등하게 분석합니다.
-
-첨부된 얼굴 사진을 분석하고, 아래 사주 정보와 통합하여 종합적인 운명 풀이를 해주세요.
-
-[사주 정보]
-성별: ${genderLabel}
-년주(年柱): ${saJu.year.char}
-월주(月柱): ${saJu.month.char}
-일주(日柱): ${saJu.day.char}  ← 일간(日干): ${saJu.dayGan}(${saJu.dayOhaeng})
-${hourText}
-오행 분포: ${oText}
-
-[분석 요청]
-1. 사진 속 인물의 인종과 얼굴 특징에 맞는 보편적 관상 원리로 이마·눈·코·입턱·전체 인상을 분석하세요.
-   - 동아시아 기준이 아닌, 해당 인종의 얼굴 특징을 그 자체로 긍정적·중립적·부정적 측면에서 평가하세요.
-2. 사주와 관상을 통합하여 등급을 판정하고 종합 천명 풀이를 작성해주세요.
-
-반드시 아래 JSON 형식만 반환하세요 (마크다운, 설명 텍스트 불필요):
-{
-  "tier": 1~6 사이 정수,
-  "gwansang": {
-    "forehead": "이마 분석 (2문장)",
-    "eyes": "눈 분석 (2문장)",
-    "nose": "코 분석 (2문장)",
-    "mouth_chin": "입·턱 분석 (2문장)",
-    "overall": "전체 인상 (2문장)"
-  },
-  "saju_analysis": "사주팔자 분석 텍스트 (3~4문장)",
-  "combined_reading": "관상과 사주를 통합한 종합 천명 풀이 (4~6문장, 등급 이유 포함)"
-}
-
-등급 기준: ${tierNames}`;
-
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${getApiKey()}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
-          { type: 'text', text: prompt },
-        ],
-      }],
-      max_tokens: 3000,
-      temperature: 0.5,
-      stream: false,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`API 오류 (${res.status}): ${err.slice(0, 200)}`);
+async function sha256(input) {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : new Uint8Array(input);
+  if (window.crypto?.subtle) {
+    const buf = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
   }
-
-  const data = await res.json();
-  let raw = data.choices?.[0]?.message?.content ?? '';
-  if (Array.isArray(raw)) {
-    raw = raw.find(b => b?.type === 'text')?.text ?? '';
-  }
-  if (!raw) throw new Error('AI 응답이 비어있습니다. 잠시 후 다시 시도해주세요.');
-  return parseJSON(raw);
+  let h = 5381; for (let i = 0; i < bytes.length; i++) h = ((h << 5) + h + bytes[i]) | 0;
+  return 'djb2-' + (h >>> 0).toString(16) + '-' + bytes.length;
 }
 
-function parseJSON(raw) {
-  const match = raw.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('AI 응답에서 JSON을 찾을 수 없습니다.');
-  try {
-    return JSON.parse(match[0]);
-  } catch {
-    throw new Error('AI 응답 파싱 실패: ' + raw.slice(0, 100));
-  }
-}
-
-// ── 결과 렌더링 ───────────────────────────────────────
-function renderResult(result, saJu, gender) {
-  const tier   = Math.max(1, Math.min(6, parseInt(result.tier) || 3));
-  const tData  = TIER_DATA[gender][tier - 1];
-
-  // 등급 배너
-  document.getElementById('tierIcon').textContent    = tData.icon;
-  document.getElementById('tierName').textContent    = tData.name;
-  document.getElementById('tierStars').textContent   = '★'.repeat(tier) + '☆'.repeat(6 - tier);
-  document.getElementById('tierTagline').textContent = tData.tag;
-  const banner = document.getElementById('tierBanner');
-  banner.classList.remove('revealed');
-  requestAnimationFrame(() => banner.classList.add('revealed'));
-
-  // 사주 기둥
-  const pillarsRow = document.getElementById('pillarsRow');
-  pillarsRow.innerHTML = '';
-  const pillars = [
-    { label:'년주', data: saJu.year },
-    { label:'월주', data: saJu.month },
-    { label:'일주', data: saJu.day },
-  ];
-  if (saJu.hour) pillars.push({ label:'시주', data: saJu.hour });
-
-  pillars.forEach(({ label, data }) => {
-    const box = document.createElement('div');
-    box.className = 'pillar-box';
-    box.innerHTML = `
-      <div class="pillar-label">${label}</div>
-      <div class="pillar-char">${data.char}</div>
-      <div class="pillar-kr">${data.kr}</div>`;
-    pillarsRow.appendChild(box);
-  });
-
-  // 오행 바
-  const ohaengBar = document.getElementById('ohaengBar');
-  ohaengBar.innerHTML = '';
-  const order = ['목','화','토','금','수'];
-  order.forEach(k => {
-    const pct = saJu.ohaeng[k] || 0;
-    if (pct === 0) return;
-    const seg = document.createElement('div');
-    seg.className = 'ohaeng-seg';
-    seg.style.flex        = pct;
-    seg.style.background  = OHAENG_COLOR[k];
-    seg.title             = `${k} ${pct}%`;
-    ohaengBar.appendChild(seg);
-  });
-
-  // 사주 분석 텍스트
-  document.getElementById('sajuText').textContent = result.saju_analysis || '';
-
-  // 관상 목록
-  const gwansangList = document.getElementById('gwansangList');
-  gwansangList.innerHTML = '';
-  const g = result.gwansang || {};
-  Object.entries(GWANSANG_META).forEach(([key, meta]) => {
-    if (!g[key]) return;
-    const item = document.createElement('div');
-    item.className = 'gwansang-item';
-    item.innerHTML = `
-      <div class="gwansang-icon">${meta.icon}</div>
-      <div class="gwansang-content">
-        <div class="gwansang-part">${meta.label}</div>
-        <div class="gwansang-text">${g[key]}</div>
-      </div>`;
-    gwansangList.appendChild(item);
-  });
-
-  // 종합 풀이
-  document.getElementById('combinedText').textContent = result.combined_reading || '';
-
-  // 스크롤 초기화
-  document.querySelector('.result-scroll').scrollTop = 0;
-}
-
-// ── 헬퍼 ─────────────────────────────────────────────
-function setLoadingText(text) {
-  document.getElementById('loadingSub').textContent = text;
-}
-
-function getApiKey() {
-  return localStorage.getItem('gwansang_apiKey') || '';
-}
-
-function loadSettings() {
-  // 설정 로드 시 필요한 초기화 처리
-}
+function setLoadingText(text) { document.getElementById('loadingSub').textContent = text; }
+function getApiKey() { return localStorage.getItem('gwansang_apiKey') || ''; }
