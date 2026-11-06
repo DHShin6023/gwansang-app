@@ -241,7 +241,7 @@ async function runAnalysis(force) {
     attachFace(facts, face);
 
     step = '풀이작성';
-    setLoadingText('지나온 길과 다가올 날을 풀어 쓰고 있습니다 (40~90초 소요)');
+    setLoadingText('지나온 길과 다가올 날을 풀어 쓰고 있습니다 (1~2분 소요)');
     const reading = normalizeReading(await callReading(facts, face));
 
     step = '결과표시';
@@ -283,14 +283,16 @@ function attachFace(facts, face) {
 }
 
 // ── AI 호출 ───────────────────────────────────────────
-async function callAPI(model, messages, maxTokens, temperature) {
+// Claude 5.5 계열은 기본으로 내부 추론(thinking)을 하며, 그 토큰도 max_tokens에 포함된다.
+// temperature는 지원하지 않으므로 보내지 않고, 추론 깊이는 effort로 조절한다.
+async function callAPI(model, messages, maxTokens, effort) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 180000);
+  const timer = setTimeout(() => ctrl.abort(), 300000);
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${getApiKey()}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature, stream: false }),
+      body: JSON.stringify({ model, messages, max_tokens: maxTokens, reasoning: { effort }, stream: false }),
       signal: ctrl.signal,
     });
     if (!res.ok) throw new Error(`API 오류 (${res.status}): ${(await res.text()).slice(0, 200)}`);
@@ -334,7 +336,7 @@ async function callFace(base64) {
   const face = await callAPI(MODEL_FACE, [{ role: 'user', content: [
     { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
     { type: 'text', text: prompt },
-  ] }], 800, 0.2);
+  ] }], 4000, 'low');
   if (face.is_face === false) throw new Error('사진에서 얼굴을 찾지 못했습니다. 얼굴이 잘 보이는 정면 사진으로 다시 시도해주세요.');
   if (!face.regions || typeof face.regions !== 'object') throw new Error('관상 분석 결과가 올바르지 않습니다. 다시 시도해주세요.');
   const regions = {};
@@ -409,11 +411,11 @@ async function callReading(facts, face) {
     { role: 'system', content: READING_SYSTEM },
     { role: 'user', content: readingPrompt(facts, face) },
   ];
-  let reading = await callAPI(MODEL_READ, messages, 8000, 0.4);
+  let reading = await callAPI(MODEL_READ, messages, 16000, 'medium');
   if (BANNED.test(JSON.stringify(reading))) {
     messages.push({ role: 'assistant', content: JSON.stringify(reading) },
                   { role: 'user', content: '규칙 5 위반 표현(수명·사망·임종 등)이 있습니다. 해당 표현을 빼고 같은 JSON 형식으로 다시 쓰세요.' });
-    try { reading = await callAPI(MODEL_READ, messages, 8000, 0.3); }
+    try { reading = await callAPI(MODEL_READ, messages, 16000, 'medium'); }
     catch (e) { console.warn('재요청 실패 — 첫 응답에서 금지 표현만 제거', e); }
   }
   return scrubBanned(reading);
