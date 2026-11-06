@@ -28,8 +28,10 @@ self.addEventListener('fetch', e => {
 
   // HTML·JS·CSS는 네트워크 우선 → 항상 최신 코드 반영 (HTML과 JS 버전 불일치 방지)
   if (e.request.mode === 'navigate' || e.request.url.match(/\.(js|css|html)(\?.*)?$/)) {
+    // cache:'no-cache' — 브라우저 HTTP 캐시(Pages max-age=600)를 건너뛰고 서버에 재확인
+    const fresh = e.request.mode === 'navigate' ? fetch(e.request.url, { cache: 'no-cache' }) : fetch(e.request, { cache: 'no-cache' });
     e.respondWith(
-      fetch(e.request).then(res => {
+      fresh.then(res => {
         const clone = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, clone));
         return res;
