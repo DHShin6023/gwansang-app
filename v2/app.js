@@ -158,11 +158,10 @@ const App = {
 
   share() {
     const c = state.current; if (!c) return;
-    const text = buildShareText(c, false);
+    const text = buildShareText(c); // 풀이 전체 공유 (카톡 등 공유 시트)
     if (navigator.share) navigator.share({ title: '천명관상', text }).catch(() => {});
     else copyText(text);
   },
-  copyAll() { const c = state.current; if (c) copyText(buildShareText(c, true)); },
 
   retry() {
     state.photoFile = null; state.current = null;
@@ -621,22 +620,9 @@ function card(title) { const c = el('div', 'result-card'); c.append(el('div', 'c
 function section(id, title) { const c = card(title); c.id = id; return c; }
 
 // ── 공유 텍스트 ───────────────────────────────────────
-function buildShareText(item, full) {
+function buildShareText(item) {
   const { facts } = item;
   const r = normalizeReading(item.reading);
-  const near = facts.near.map(n => {
-    const y = (r.future_near?.years || []).find(x => Number(x.year) === n.year) || {};
-    return `${n.year} ${n.label}${y.keyword ? '(' + y.keyword + ')' : ''}`;
-  }).join(' · ');
-  if (!full) {
-    return `[천명관상] ${r.headline || ''}
-올해 ${facts.present.year} ${facts.present.ganji}년 · ${facts.present.label}
-${r.present?.overview || ''}
-
-다가올 3년: ${near}
-
-✦ ${r.future_far?.life_portrait || ''}`;
-  }
   const lines = [`[천명관상] ${r.headline || ''}`,
     `사주 ${['year','month','day','hour'].map(k => facts.chart.pillars[k]).filter(Boolean).join(' ')} · ${facts.chart.strength.label}`, '',
     '◐ 지나온 길'];
