@@ -35,10 +35,20 @@ const state = {
 // ── 초기화 ────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // 이전 버전 HTML이 캐시에서 열린 경우(서비스워커 갱신 전) 한 번만 새로고침
+  // 새 서비스워커가 자리 잡은 뒤 새로고침해야 새 HTML이 열린다
   if (!document.getElementById('resultBody')) {
-    try {
-      if (!sessionStorage.getItem('gw_reloaded')) { sessionStorage.setItem('gw_reloaded', '1'); location.reload(); return; }
-    } catch {}
+    let done = false;
+    const reload = () => {
+      if (done) return; done = true;
+      try { if (sessionStorage.getItem('gw_reloaded')) return; sessionStorage.setItem('gw_reloaded', '1'); } catch {}
+      location.reload();
+    };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', reload);
+      navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {});
+      setTimeout(reload, 4000);
+    } else reload();
+    return;
   }
   initStars();
   initSelects();
