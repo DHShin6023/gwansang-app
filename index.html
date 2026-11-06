@@ -12,7 +12,7 @@
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icon.png">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -27,8 +27,9 @@
       <div class="trigram">☯</div>
       <h1 class="app-title">천명관상</h1>
       <p class="app-hanja">天 命 觀 相</p>
-      <p class="app-desc">사주팔자와 관상으로 읽는<br>나만의 타고난 운명</p>
+      <p class="app-desc">사주팔자와 관상으로 읽는<br>지나온 길 · 올해의 운 · 다가올 날</p>
       <button class="btn-gold" onclick="App.goInfo()">✦ 천명을 알아보기 ✦</button>
+      <button class="btn-outline btn-history" id="btnHistory" style="display:none" onclick="App.goHistory()">지난 풀이 보기</button>
     </div>
     <button class="btn-gear" onclick="App.goSettings()" title="설정">⚙</button>
   </div>
@@ -117,6 +118,7 @@
       </div>
       <p class="loading-main">천명을 읽는 중...</p>
       <p class="loading-sub" id="loadingSub">사주팔자를 계산하고 있습니다</p>
+      <p class="loading-hint" id="loadingHint"></p>
     </div>
   </div>
 
@@ -125,41 +127,27 @@
   <!-- ╚══════════════════════════════╝ -->
   <div class="view" id="view-result">
     <div class="result-scroll">
-
-      <!-- 등급 배너 -->
-      <div class="tier-banner" id="tierBanner">
-        <div class="tier-glow" id="tierGlow"></div>
-        <div class="tier-icon"    id="tierIcon">👑</div>
-        <div class="tier-name"    id="tierName">황제</div>
-        <div class="tier-stars"   id="tierStars"></div>
-        <div class="tier-tagline" id="tierTagline">천명이 깃든 얼굴</div>
-      </div>
-
-      <!-- 사주 카드 -->
-      <div class="result-card">
-        <div class="card-title">☰ 사주팔자</div>
-        <div class="pillars-row" id="pillarsRow"></div>
-        <div class="ohaeng-bar"  id="ohaengBar"></div>
-        <p class="card-body" id="sajuText"></p>
-      </div>
-
-      <!-- 관상 카드 -->
-      <div class="result-card">
-        <div class="card-title">◎ 관상 분석</div>
-        <div id="gwansangList"></div>
-      </div>
-
-      <!-- 종합 풀이 카드 -->
-      <div class="result-card combined-card">
-        <div class="card-title">✦ 종합 천명 풀이</div>
-        <p class="card-body combined-body" id="combinedText"></p>
-      </div>
-
-      <!-- 액션 -->
+      <div id="resultBody"></div>
       <div class="action-row">
-        <button class="btn-share" onclick="App.share()">📤 공유하기</button>
-        <button class="btn-retry" onclick="App.retry()">🔄 다시 하기</button>
+        <button class="btn-share" onclick="App.share()">📤 내용 공유</button>
+        <button class="btn-retry" onclick="App.regenerate()">🔄 새로 풀이</button>
+        <button class="btn-retry" onclick="App.retry()">🏠 처음으로</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ╔══════════════════════════════╗ -->
+  <!-- ║  뷰 7: 지난 풀이              ║ -->
+  <!-- ╚══════════════════════════════╝ -->
+  <div class="view" id="view-history">
+    <div class="top-bar">
+      <button class="btn-back" onclick="App.goHome()">‹</button>
+      <span class="top-title">지난 풀이</span>
+    </div>
+    <div class="scroll-wrap">
+      <div id="historyList"></div>
+      <p class="input-hint">풀이 기록과 생년월일은 이 기기에만 저장됩니다.</p>
+      <button class="btn-outline" style="margin-top:16px;width:100%" onclick="App.clearHistory()">기록 모두 삭제</button>
     </div>
   </div>
 
@@ -179,7 +167,7 @@
     </div>
   </div>
 
-  <script src="saju.js?v=3"></script>
-  <script src="app.js?v=3"></script>
+  <script src="saju.js?v=4"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

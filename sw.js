@@ -1,4 +1,4 @@
-const CACHE = 'gwansang-v3';
+const CACHE = 'gwansang-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -9,7 +9,7 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))));
   self.skipWaiting();
 });
 
@@ -26,8 +26,8 @@ self.addEventListener('fetch', e => {
   if (e.request.url.includes('openrouter.ai') ||
       e.request.url.includes('fonts.googleapis')) return;
 
-  // JS/CSS는 네트워크 우선 → 항상 최신 코드 반영
-  if (e.request.url.match(/\.(js|css)(\?.*)?$/)) {
+  // HTML·JS·CSS는 네트워크 우선 → 항상 최신 코드 반영 (HTML과 JS 버전 불일치 방지)
+  if (e.request.mode === 'navigate' || e.request.url.match(/\.(js|css|html)(\?.*)?$/)) {
     e.respondWith(
       fetch(e.request).then(res => {
         const clone = res.clone();
